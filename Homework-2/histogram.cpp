@@ -3,6 +3,7 @@
 #include <vector>
 #include <string>
 #include <thread>
+#include <algorithm>
 
 using namespace std;
 
@@ -25,8 +26,7 @@ int main(int argc, char *argv[])
     // <data_count>, number of measurements
 
     //Check the number of arguments
-    if (argc != 6)
-    {
+    if (argc != 6)    {
         std::cerr << "Usage: " << argv[0] << " <number of threads> <bin count> <min meas> <max meas> <data count>" << std::endl;
         return 1;
     }
@@ -34,12 +34,18 @@ int main(int argc, char *argv[])
     int thread_count = std::stoi(argv[1]);
     vector<thread> threads;
 
-    int bin_count   = stoi(argv[2]);
+    int   bin_count = stoi(argv[2]);
+    if (bin_count <= 0) {
+        std::cerr << "Error: bin_count must be greater than 0" << std::endl;
+        return 1;
+    }
     float min_meas  = stof(argv[3]);
     float max_meas  = stof(argv[4]);
-
-    if (min_meas >= max_meas)
-    {
+    if(min_meas < 0 || max_meas < 0){
+        std::cerr << "Error: min_meas and max_meas must be greater than 0" << std::endl;
+        return 1;
+    }
+    if (min_meas >= max_meas)    {
         std::cerr << "Error: min_meas must be less than max_meas" << std::endl;
         return 1;
     }
@@ -49,24 +55,21 @@ int main(int argc, char *argv[])
         // bin_counts: a list containing the number of elements in each bin
     vector<float> bin_maxes(bin_count);
     vector<int> bin_counts(bin_count);
-
     // populate an array (data) of <data_count> float elements between <min_meas>\
      and <max_meas>. Use srand(100) to initialize your pseudorandom sequence.
-
     vector<float> data(data_count);
     srand(100);
     for (int i = 0; i < data_count; ++i) {
         data[i] = min_meas + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (max_meas - min_meas)));
     }
 
-    // for (int i = 0; i < data_count; ++i) {
-    //     cout << data[i] << "\t";
-    //     if (i % 10 == 0) {
-    //         cout << endl;
-    //     }
-    // }
-    // cout << endl;
-
+    // get the maximum values and store them into the bin_maxes vector
+        //The first element will be used to calculate all the rest. use of the max_element and min_element functions from the algorithm library to 
+        //promote efficiency
+    bin_maxes[0] = (*max_element(data.begin(), data.end()) - *min_element(data.begin(), data.end())) / bin_count;
+    for (int i = 1; i < bin_count; i++){
+        bin_maxes[i] = bin_maxes[i-1] + bin_maxes[0];
+    }
 
     // compute the histogram (i.e., bin_maxes and bin_count) using\
       <number of threads> threads using a global sum
