@@ -26,12 +26,26 @@ for value in data:
 counts[-1] += sum(1 for x in data if x == data_max)
 
 # Print results
+# print("Bin edges:", bin_edges)
+# print("Counts per bin:", counts)
+data = np.array([3.840381,
+3.564491,
+3.165412,
+5.357139,
+4.382139,
+1.483324,
+6.132465,
+9.730042,
+5.638801,
+4.865761])
+
+
+counts, bin_edges = np.histogram(data, 6)
 print("Bin edges:", bin_edges)
 print("Counts per bin:", counts)
-
 # Plot histogram manually
-plt.bar(bin_edges[:-1], counts, width=bin_width, edgecolor='black', align='edge')
-plt.xlabel('Value')
-plt.ylabel('Frequency')
-plt.title('Manually Computed Histogram')
-plt.show()
+# plt.bar(bin_edges[:-1], counts, width=bin_width, edgecolor='black', align='edge')
+# plt.xlabel('Value')
+# plt.ylabel('Frequency')
+# plt.title('Manually Computed Histogram')
+# plt.show()

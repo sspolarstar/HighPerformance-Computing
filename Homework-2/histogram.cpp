@@ -5,25 +5,59 @@
 #include <thread>
 #include <algorithm>
 
+// #define DEBUG
+
+#ifdef DEBUG
+    #define log(FMT, ...) printf(FMT, ##__VA_ARGS__)
+    int DEBUG_c; //could be a char. Used to pause the program
+    #define bp scanf("%c", &DEBUG_c)
+#else
+    #define bp
+    #define log(...)
+#endif // DEBUG
+
 using namespace std;
 
 
-void globalSumThread(int threadID){
+void globalSumThread(int threadID, vector<float>& data, vector<float>& bin_maxes, 
+    vector<vector<int>>& separatedBinCounts, int num_data, int num_threads, int num_bins){
+    // vector<int> localBinCounts(num_bins);
 
-    // this_thread::sleep_for(chrono::milliseconds(rand() % 1000));
-    // printf("Hello from thread : %d\n", threadID);
+    for(int i = threadID; i < num_data; i+=num_threads){
+        int low = 0;
+        int high = num_bins - 1;
+        int mid;
+        while(low <= high){
+            mid = low+(high-low)/2;
+            if(mid == 0 && data[i] <= bin_maxes[0]) {
+                separatedBinCounts[threadID][0]++;
+                break;
+            }
+            else if(data[i] <= bin_maxes[mid] && (mid == 0 || data[i] > bin_maxes[mid-1])) {
+                separatedBinCounts[threadID][mid]++;
+                break;
+            } else if(data[i] > bin_maxes[mid]) {
+                low = mid + 1;
+            } else {
+                high = mid - 1;
+            }
+        }
+    }
 
+    for(int i = 0; i < separatedBinCounts[threadID].size(); i++){
+        log("ThreadID: %d, bin %d has %d \n", threadID, i, separatedBinCounts[threadID][i]);
+    }
     return;
 }
 
 
 int main(int argc, char *argv[])
 {
-    // <number of threads>, the number of threads to use for the execution
-    // <bin_count>, the number of bins in the histogram
+    // <num_threads>, the number of threads to use for the execution
+    // <num_bins>, the number of bins in the histogram
     // <min_meas>, minimum (float) value of the measurements
     // <max_meas>, maximum (float) value of the measurements
-    // <data_count>, number of measurements
+    // <num_data>, number of measurements
 
     //Check the number of arguments
     if (argc != 6)    {
@@ -31,12 +65,12 @@ int main(int argc, char *argv[])
         return 1;
     }
     //evaluate the executability of the arguments
-    int thread_count = std::stoi(argv[1]);
+    int num_threads = std::stoi(argv[1]);
     vector<thread> threads;
 
-    int   bin_count = stoi(argv[2]);
-    if (bin_count <= 0) {
-        std::cerr << "Error: bin_count must be greater than 0" << std::endl;
+    int   num_bins = stoi(argv[2]);
+    if (num_bins <= 0) {
+        std::cerr << "Error: num_bins must be greater than 0" << std::endl;
         return 1;
     }
     float min_meas  = stof(argv[3]);
@@ -50,47 +84,67 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    int data_count  = stoi(argv[5]);
+    int num_data  = stoi(argv[5]);
         // bin_maxes: a list containing the upper bound of each bin
         // bin_counts: a list containing the number of elements in each bin
-    vector<float> bin_maxes(bin_count);
-    vector<int> bin_counts(bin_count);
-    // populate an array (data) of <data_count> float elements between <min_meas>\
+    vector<float> bin_maxes(num_bins);
+    vector<int> bin_counts(num_bins); //total
+    vector<vector<int>> separatedBinCounts(num_threads, vector<int>(num_bins)); //
+    // populate an array (data) of <num_data> float elements between <min_meas>\
      and <max_meas>. Use srand(100) to initialize your pseudorandom sequence.
-    vector<float> data(data_count);
+    vector<float> data(num_data);
     srand(100);
-    for (int i = 0; i < data_count; ++i) {
-        data[i] = min_meas + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (max_meas - min_meas)));
+    for (int i = 0; i < num_data; i++) {
+        float temp = min_meas + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (max_meas - min_meas)));
+        data[i] = temp;
     }
 
     // get the maximum values and store them into the bin_maxes vector
         //The first element will be used to calculate all the rest. use of the max_element and min_element functions from the algorithm library to 
         //promote efficiency
-    bin_maxes[0] = (*max_element(data.begin(), data.end()) - *min_element(data.begin(), data.end())) / bin_count;
-    for (int i = 1; i < bin_count; i++){
-        bin_maxes[i] = bin_maxes[i-1] + bin_maxes[0];
-    }
+    float bin_width = (*max_element(data.begin(), data.end()) - *min_element(data.begin(), data.end())) / num_bins;
+    float min_val = *min_element(data.begin(), data.end());
 
-    // compute the histogram (i.e., bin_maxes and bin_count) using\
+    bin_maxes[0] = min_val + bin_width;
+    for (int i = 1; i < num_bins-1; i++) {
+        bin_maxes[i] = bin_maxes[i-1] + bin_width;
+    }
+    //can't be calculated, so a quick grab of the max element keeps the algorithm working.
+    bin_maxes[num_bins-1] = *max_element(data.begin(), data.end());
+
+    // compute the histogram (i.e., bin_maxes and num_bins) using\
       <number of threads> threads using a global sum
-    for(int i = 0; i < thread_count; i++){
-        threads.push_back(thread(globalSumThread, i));
+    for(int i = 0; i < num_threads; i++){
+        // threads.push_back(thread(globalSumThread, i, data, bin_maxes, 
+        //                         bin_counts, num_data, num_threads, num_bins));
+        threads.push_back(thread(globalSumThread, i, ref(data), ref(bin_maxes), ref(separatedBinCounts), 
+                                num_data, num_threads, num_bins));
     }
-    float globalSum;
-    // globalSumThread(data, bin_maxes, bin_counts, thread_count, 0);
 
-    // compute the histogram (i.e., bin_maxes and bin_count) using\
+    // globalSumThread(data, bin_maxes, bin_counts, num_threads, 0);
+
+    // compute the histogram (i.e., bin_maxes and num_bins) using\
       <number of threads> threads using a tree structured sum
     for (auto& thread : threads) {
         thread.join();
     }
+    //after barrier, compute all threads in global manner
+    for(int i = 0; i < num_threads; i++){
+        for(int j = 0; j < num_bins; j++){
+            bin_counts[j] += separatedBinCounts[i][j];
+        }
+    }
 
+    for(int i = 0; i < num_bins; i++){
+        printf("bin[%d] : %d \n", i, bin_counts[i]);
+    }
 
-
-    
     // ./histogram 4 10 0.0 5.0 100
-    // The outputs of the program should be the same for both implementations (global sum and tree structured sum):
-    // Your program should print all list elements on a single line and print each list on its own line. Additionally, label each list something like the following example output.
+    // The outputs of the program should be the same for both implementations\
+     (global sum and tree structured sum):
+    // Your program should print all list elements on a single line and print\
+     each list on its own line. Additionally, label each list something like \
+     the following example output.
 
     return 0;
 }
@@ -105,19 +159,19 @@ int main(int argc, char *argv[])
 
 // The program will have to:
 
-// populate an array (data) of <data_count> float elements between <min_meas>\
+// populate an array (data) of <num_data> float elements between <min_meas>\
  and <max_meas>. Use srand(100) to initialize your pseudorandom sequence.
-// compute the histogram (i.e., bin_maxes and bin_count) using  <number of threads>\
+// compute the histogram (i.e., bin_maxes and num_bins) using  <number of threads>\
  threads using a global sum
-// compute the histogram (i.e., bin_maxes and bin_count) using  <number of threads>\
+// compute the histogram (i.e., bin_maxes and num_bins) using  <number of threads>\
  threads using a tree structured sum
 // The inputs of the program are:
 
 // <number of threads>, the number of threads to use for the execution
-// <bin_count>, the number of bins in the histogram
+// <num_bins>, the number of bins in the histogram
 // <min_meas>, minimum (float) value of the measurements
 // <max_meas>, maximum (float) value of the measurements
-// <data_count>, number of measurements
+// <num_data>, number of measurements
 // Your program must adhere to the following order of command-line arguments:
 
 // <number of threads> <bin count> <min meas> <max meas> <data count>
