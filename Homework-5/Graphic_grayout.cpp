@@ -1,9 +1,16 @@
+// this file will take a input .raw of size 1024x1024 in 24bit RGB. Then it will convert
+// it to grayscale.
+
+// it must use cuda to implement. 
+//
+
+
 #include <cuda_runtime.h>
-#include <stdio.h>
 #include <iostream>
 #include <fstream>
 #include <vector>
-#include <string.h>
+#include <cmath>
+#include <cstdint>
 
 using namespace std;
 
@@ -15,21 +22,21 @@ __global__ void cuda_convert(uint8_t* input, uint8_t* output, int width, int hei
 
     // Check if thread is within image bounds
     if (x < width && y < height) {
-        // Calculate linear index
+        // Calculate linear index for the input (3 channels per pixel)
         int idx = (y * width + x) * 3;
         int output_idx = y * width + x;
-
-        // Extract RGB values
+        // get RGB values
         uint8_t r = input[idx];
         uint8_t g = input[idx + 1];
         uint8_t b = input[idx + 2];
 
-        // Convert to grayscale using weighted method
-        output[output_idx] = (uint8_t)(0.21f * r + 0.72f * g + 0.07f * b);
+        // convert to grayscale using weighted method (NTSC formula)
+        output[output_idx] = static_cast<uint8_t>(0.299f * r + 0.587f * g + 0.114f * b);
     }
 }
 
 int main(int argc, char *argv[]) {
+
     // Check command line arguments
     if (argc != 3) {
         cout << "Usage: ./Graphic_grayout <input_file> <output_file>" << endl;
@@ -43,11 +50,10 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Get file size
+    // Get file size and read file into host memory
     streampos file_size = input_file.tellg();
     input_file.seekg(0, ios::beg);
 
-    // Read file into host memory
     vector<uint8_t> host_input(file_size);
     if (!input_file.read(reinterpret_cast<char*>(host_input.data()), file_size)) {
         cout << "Error reading input file" << endl;
@@ -56,7 +62,6 @@ int main(int argc, char *argv[]) {
     input_file.close();
 
     // Assume input is 24-bit RGB (3 bytes per pixel)
-    // Calculate width and height (this is a simplification - you may need to pass these)
     int total_pixels = file_size / 3;
     int width = static_cast<int>(sqrt(total_pixels));
     int height = total_pixels / width;
@@ -76,8 +81,6 @@ int main(int argc, char *argv[]) {
 
     // Launch kernel
     cuda_convert<<<gridDim, blockDim>>>(device_input, device_output, width, height);
-
-    // Synchronize device
     cudaDeviceSynchronize();
 
     // Check for kernel launch errors
@@ -89,16 +92,17 @@ int main(int argc, char *argv[]) {
 
     // Allocate host memory for output
     vector<uint8_t> host_output(width * height);
-
-    // Copy results back to host
     cudaMemcpy(host_output.data(), device_output, width * height, cudaMemcpyDeviceToHost);
 
-    // Write output file
+    // Write output file with a simple PGM header for grayscale images
     ofstream output_file(argv[2], ios::binary);
     if (!output_file) {
         cout << "Error: Could not open output file " << argv[2] << endl;
         return 1;
     }
+
+    // Write PGM header (P5 format)
+    output_file << "P5\n" << width << " " << height << "\n255\n";
     output_file.write(reinterpret_cast<char*>(host_output.data()), width * height);
     output_file.close();
 
@@ -107,6 +111,5 @@ int main(int argc, char *argv[]) {
     cudaFree(device_output);
 
     cout << "Grayscale conversion complete. Output saved to " << argv[2] << endl;
-
     return 0;
 }
